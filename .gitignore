@@ -1,0 +1,67 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ── Environnement virtuel ─────────────────────────────────────────────────────
+venv/
+env/
+ENV/
+.venv
+
+# ── Variables d'environnement (clé API, secrets) ─────────────────────────────
+.env
+.env.local
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Base vectorielle FAISS (régénérée via scripts/init_reg.py) ───────────────
+data/chroma_db/
+
+# ── Outputs générés (rapports No-Go / Go Pack) ───────────────────────────────
+outputs/
+
+# ── AO auto-générés lors des tests (garder seulement les AO_Exemple_*.pdf) ───
+data/ao_pdf/AO_2026*.pdf
+
+# ── Documents internes non publiables ────────────────────────────────────────
+dossier_prototypage.docx
+extract_docx.ps1
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+nul
+
+# ── Fichiers temporaires ──────────────────────────────────────────────────────
+tmp/
+temp/
+*.tmp
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/

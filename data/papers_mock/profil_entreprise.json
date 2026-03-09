@@ -1,0 +1,99 @@
+{
+  "nom": "LogiSoft Solutions",
+  "effectif": 85,
+  "chiffre_affaires": 12500000.0,
+  "certifications": [
+    "ISO 9001:2015",
+    "ISO 27001:2013",
+    "Hébergeur de Données de Santé (HDS)"
+  ],
+  "references_clients": [
+    {
+      "nom": "Carrefour Supply Chain",
+      "secteur": "Grande distribution",
+      "annee": 2023,
+      "solution": "WMS Cloud",
+      "budget": 450000,
+      "duree_mois": 12,
+      "satisfaction": 4.5
+    },
+    {
+      "nom": "Renault Logistics",
+      "secteur": "Automobile",
+      "annee": 2022,
+      "solution": "TMS avec optimisation de tournées",
+      "budget": 380000,
+      "duree_mois": 10,
+      "satisfaction": 4.8
+    },
+    {
+      "nom": "Sanofi Pharmaceutical Distribution",
+      "secteur": "Santé/Pharmacie",
+      "annee": 2023,
+      "solution": "WMS + Traçabilité RFID",
+      "budget": 620000,
+      "duree_mois": 18,
+      "satisfaction": 4.7
+    },
+    {
+      "nom": "Decathlon Logistics",
+      "secteur": "Retail/Sport",
+      "annee": 2021,
+      "solution": "ERP Logistique intégré",
+      "budget": 290000,
+      "duree_mois": 8,
+      "satisfaction": 4.3
+    }
+  ],
+  "projets_realises": [
+    {
+      "titre": "Déploiement WMS multi-sites avec synchronisation temps réel",
+      "client": "Carrefour Supply Chain",
+      "secteur": "Grande distribution",
+      "duree_mois": 12,
+      "succes": true,
+      "technologies": ["WMS Cloud", "API REST", "PostgreSQL", "React"]
+    },
+    {
+      "titre": "Intégration TMS avec ERP SAP et optimisation de tournées",
+      "client": "Renault Logistics",
+      "secteur": "Automobile",
+      "duree_mois": 10,
+      "succes": true,
+      "technologies": ["TMS", "SAP Integration", "Algorithmes d'optimisation"]
+    },
+    {
+      "titre": "Système de traçabilité RFID pour produits pharmaceutiques",
+      "client": "Sanofi",
+      "secteur": "Santé",
+      "duree_mois": 18,
+      "succes": true,
+      "technologies": ["RFID", "WMS", "Compliance GMP", "Blockchain"]
+    },
+    {
+      "titre": "Migration ERP legacy vers solution cloud moderne",
+      "client": "Decathlon",
+      "secteur": "Retail",
+      "duree_mois": 8,
+      "succes": true,
+      "technologies": ["ERP Cloud", "Migration de données", "Azure"]
+    }
+  ],
+  "competences": [
+    "WMS (Warehouse Management System)",
+    "TMS (Transport Management System)",
+    "ERP Logistique",
+    "Traçabilité RFID / Code-barres",
+    "Intégration EDI (Electronic Data Interchange)",
+    "API REST / Web Services",
+    "Cloud AWS / Azure / GCP",
+    "Optimisation d'algorithmes logistiques",
+    "Business Intelligence / Reporting",
+    "Mobile Apps (Android / iOS)",
+    "IoT (Internet of Things)",
+    "Blockchain pour traçabilité",
+    "Intelligence Artificielle / Machine Learning",
+    "Cybersécurité",
+    "RGPD / Conformité réglementaire"
+  ]
+}

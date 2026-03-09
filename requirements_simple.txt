@@ -1,0 +1,28 @@
+# Core dependencies
+python-dotenv==1.0.0
+pydantic==2.5.3
+
+# LangChain & OpenAI
+langchain==0.1.0
+langchain-openai==0.0.2
+langchain-community==0.0.10
+openai==1.6.1
+
+# Vector DB - FAISS (pas de compilation, fonctionne sur Windows)
+faiss-cpu
+
+# PDF Processing
+PyMuPDF==1.23.8
+Pillow==10.2.0
+
+# UI
+streamlit==1.29.0
+
+# Document Generation
+python-docx==1.1.0
+reportlab==4.0.7
+
+# Data & Utils
+pandas==2.1.4
+numpy==1.26.2
+requests==2.31.0

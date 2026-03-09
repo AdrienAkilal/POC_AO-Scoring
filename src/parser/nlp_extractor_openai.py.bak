@@ -1,0 +1,223 @@
+"""Module d'extraction NLP structurée avec GPT-4o"""
+import json
+import logging
+from datetime import datetime
+from typing import Dict, List, Optional
+from langchain_openai import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
+
+from ..models import AOContext, Exigence, Question, RedFlag
+from ..config import OPENAI_API_KEY, OPENAI_MODEL
+
+logger = logging.getLogger(__name__)
+
+
+class ExtractionResult(BaseModel):
+    """Résultat de l'extraction NLP"""
+    titre: str = Field(description="Titre de l'appel d'offres")
+    organisme: str = Field(description="Nom de l'organisme émetteur")
+    resume: str = Field(description="Résumé synthétique de l'AO (2-3 phrases)")
+    date_limite: Optional[str] = Field(description="Date limite de réponse (format ISO 8601)")
+    budget_indicatif: Optional[float] = Field(description="Budget indicatif en euros si mentionné")
+    exigences: List[Dict] = Field(description="Liste des exigences identifiées")
+    questions: List[Dict] = Field(description="Liste des questions posées")
+    criteres_evaluation: Dict = Field(description="Critères d'évaluation avec pondération si disponible")
+    red_flags: List[Dict] = Field(description="Points d'alerte identifiés")
+
+
+class NLPExtractor:
+    """Extracteur NLP utilisant GPT-4o pour analyser les dossiers AO"""
+
+    def __init__(self, api_key: str = OPENAI_API_KEY, model: str = OPENAI_MODEL):
+        """
+        Initialise l'extracteur NLP
+
+        Args:
+            api_key: Clé API OpenAI
+            model: Modèle à utiliser (défaut: gpt-4o)
+        """
+        self.llm = ChatOpenAI(
+            api_key=api_key,
+            model=model,
+            temperature=0.1  # Faible température pour extraction factuelle
+        )
+
+        self.parser = PydanticOutputParser(pydantic_object=ExtractionResult)
+
+    def extract_context(self, text: str, ao_id: str, sections: Optional[Dict[str, str]] = None) -> AOContext:
+        """
+        Extrait le contexte structuré d'un dossier AO
+
+        Args:
+            text: Texte complet du dossier AO
+            ao_id: Identifiant de l'AO
+            sections: Sections pré-découpées du document (optionnel)
+
+        Returns:
+            AOContext structuré
+        """
+        logger.info(f"Extraction NLP pour AO {ao_id}")
+
+        # Limiter la taille du texte pour l'API (environ 30000 tokens)
+        max_chars = 120000
+        if len(text) > max_chars:
+            logger.warning(f"Texte tronqué de {len(text)} à {max_chars} caractères")
+            text = text[:max_chars] + "\n\n[...Document tronqué...]"
+
+        # Créer le prompt d'extraction
+        prompt = self._create_extraction_prompt()
+
+        try:
+            # Appeler le LLM
+            messages = prompt.format_messages(
+                text=text,
+                format_instructions=self.parser.get_format_instructions()
+            )
+
+            response = self.llm.invoke(messages)
+            result = self.parser.parse(response.content)
+
+            # Convertir en AOContext
+            context = self._convert_to_ao_context(result, ao_id)
+
+            logger.info(f"Extraction réussie: {len(context.exigences)} exigences, "
+                       f"{len(context.questions)} questions, "
+                       f"{len(context.red_flags)} red flags")
+
+            return context
+
+        except Exception as e:
+            logger.error(f"Erreur lors de l'extraction NLP: {e}")
+            # Retourner un contexte minimal en cas d'erreur
+            return self._create_fallback_context(ao_id, text)
+
+    def _create_extraction_prompt(self) -> ChatPromptTemplate:
+        """Crée le prompt d'extraction structurée"""
+
+        template = """Tu es un expert en analyse d'appels d'offres pour un éditeur logiciel spécialisé en solutions logistiques (WMS, TMS, ERP, traçabilité).
+
+Analyse le dossier d'appel d'offres suivant et extrais les informations structurées demandées.
+
+DOSSIER AO:
+{text}
+
+INSTRUCTIONS:
+1. Identifie le titre, l'organisme émetteur et résume l'objet de l'AO en 2-3 phrases
+2. Extrais TOUTES les exigences (techniques, fonctionnelles, juridiques, organisationnelles)
+   - Pour chaque exigence, indique: description, catégorie (technique/fonctionnelle/juridique/autre), priorité (obligatoire/souhaitable/optionnelle)
+3. Liste TOUTES les questions posées dans le dossier de consultation
+   - Pour chaque question: la question elle-même, la section d'origine, et les points attribués si mentionnés
+4. Identifie les critères d'évaluation et leur pondération si disponible
+5. Détecte les RED FLAGS potentiels:
+   - Délais très courts (< 7 jours)
+   - Certifications obligatoires spécifiques
+   - Technologies imposées
+   - Clauses juridiques contraignantes
+   - Exigences incompatibles avec un éditeur logiciel
+   - Pour chaque red flag: type, description, et indique si c'est potentiellement bloquant
+
+Sois exhaustif et précis. Si une information n'est pas disponible, utilise null.
+
+{format_instructions}
+"""
+
+        return ChatPromptTemplate.from_template(template)
+
+    def _convert_to_ao_context(self, result: ExtractionResult, ao_id: str) -> AOContext:
+        """Convertit le résultat d'extraction en AOContext"""
+
+        # Parser la date si présente
+        date_limite = None
+        if result.date_limite:
+            try:
+                date_limite = datetime.fromisoformat(result.date_limite.replace('Z', '+00:00'))
+            except Exception as e:
+                logger.warning(f"Erreur parsing date: {e}")
+
+        # Convertir les exigences
+        exigences = []
+        for idx, exig_dict in enumerate(result.exigences):
+            exigences.append(Exigence(
+                id=f"EXG-{idx+1:03d}",
+                description=exig_dict.get("description", ""),
+                categorie=exig_dict.get("categorie", "autre"),
+                priorite=exig_dict.get("priorite", "obligatoire")
+            ))
+
+        # Convertir les questions
+        questions = []
+        for idx, quest_dict in enumerate(result.questions):
+            questions.append(Question(
+                id=f"Q-{idx+1:03d}",
+                question=quest_dict.get("question", ""),
+                section=quest_dict.get("section", ""),
+                points=quest_dict.get("points")
+            ))
+
+        # Convertir les red flags
+        red_flags = []
+        for idx, flag_dict in enumerate(result.red_flags):
+            red_flags.append(RedFlag(
+                type=flag_dict.get("type", "autre"),
+                description=flag_dict.get("description", ""),
+                bloquant=flag_dict.get("bloquant", False)
+            ))
+
+        return AOContext(
+            ao_id=ao_id,
+            titre=result.titre,
+            organisme=result.organisme,
+            resume=result.resume,
+            date_limite=date_limite,
+            budget_indicatif=result.budget_indicatif,
+            exigences=exigences,
+            questions=questions,
+            criteres_evaluation=result.criteres_evaluation,
+            red_flags=red_flags,
+            metadata={}
+        )
+
+    def _create_fallback_context(self, ao_id: str, text: str) -> AOContext:
+        """Crée un contexte minimal en cas d'échec de l'extraction"""
+
+        return AOContext(
+            ao_id=ao_id,
+            titre="[Extraction échouée]",
+            organisme="[Inconnu]",
+            resume=text[:500] + "..." if len(text) > 500 else text,
+            date_limite=None,
+            budget_indicatif=None,
+            exigences=[],
+            questions=[],
+            criteres_evaluation={},
+            red_flags=[RedFlag(
+                type="erreur_extraction",
+                description="L'extraction NLP a échoué, analyse manuelle requise",
+                bloquant=True
+            )],
+            metadata={"extraction_failed": True}
+        )
+
+    def extract_key_requirements(self, context: AOContext, max_requirements: int = 10) -> List[str]:
+        """
+        Extrait les exigences clés pour le RAG
+
+        Args:
+            context: Contexte AO
+            max_requirements: Nombre maximum d'exigences à retourner
+
+        Returns:
+            Liste des descriptions d'exigences prioritaires
+        """
+        # Filtrer les exigences obligatoires
+        obligatoires = [e for e in context.exigences if e.priorite == "obligatoire"]
+
+        # Si pas assez, ajouter les souhaitables
+        if len(obligatoires) < max_requirements:
+            souhaitables = [e for e in context.exigences if e.priorite == "souhaitable"]
+            obligatoires.extend(souhaitables[:max_requirements - len(obligatoires)])
+
+        # Retourner les descriptions
+        return [e.description for e in obligatoires[:max_requirements]]

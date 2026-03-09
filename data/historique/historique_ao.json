@@ -1,0 +1,47 @@
+[
+  {
+    "ao_id": "AO_HIST_001",
+    "titre": "Déploiement WMS pour plateforme logistique régionale",
+    "secteur": "Grande distribution",
+    "decision": "Go",
+    "score": 82.5,
+    "resultat": "gagné",
+    "similarite": 0.85
+  },
+  {
+    "ao_id": "AO_HIST_002",
+    "titre": "Solution TMS pour optimisation transport national",
+    "secteur": "Transport",
+    "decision": "Go",
+    "score": 75.0,
+    "resultat": "gagné",
+    "similarite": 0.72
+  },
+  {
+    "ao_id": "AO_HIST_003",
+    "titre": "Intégration ERP logistique avec SAP existant",
+    "secteur": "Industrie",
+    "decision": "Go sous réserve",
+    "score": 65.5,
+    "resultat": "perdu",
+    "similarite": 0.68
+  },
+  {
+    "ao_id": "AO_HIST_004",
+    "titre": "Système de traçabilité pour produits pharmaceutiques",
+    "secteur": "Santé",
+    "decision": "Go",
+    "score": 88.0,
+    "resultat": "gagné",
+    "similarite": 0.78
+  },
+  {
+    "ao_id": "AO_HIST_005",
+    "titre": "Migration infrastructure logistique vers le cloud",
+    "secteur": "E-commerce",
+    "decision": "No-Go",
+    "score": 45.0,
+    "resultat": "abandonné",
+    "similarite": 0.42
+  }
+]

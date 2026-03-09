@@ -1,0 +1,279 @@
+"""Gestionnaire du référentiel REG avec RAG (ChromaDB)"""
+import logging
+from pathlib import Path
+from typing import List, Dict, Optional
+import chromadb
+from chromadb.config import Settings
+from langchain_openai import OpenAIEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import Chroma
+
+from ..models import EvidenceREG
+from ..config import (
+    CHROMA_PERSIST_DIRECTORY,
+    CHROMA_COLLECTION_NAME,
+    OPENAI_API_KEY,
+    OPENAI_EMBEDDING_MODEL,
+    PDF_CHUNK_SIZE,
+    PDF_CHUNK_OVERLAP,
+    REG_DOCS_DIR
+)
+from ..ingestion import PDFProcessor
+
+logger = logging.getLogger(__name__)
+
+
+class REGManager:
+    """Gestionnaire du référentiel interne REG avec recherche vectorielle"""
+
+    def __init__(self, persist_directory: str = CHROMA_PERSIST_DIRECTORY):
+        """
+        Initialise le gestionnaire REG
+
+        Args:
+            persist_directory: Répertoire de persistence ChromaDB
+        """
+        self.persist_directory = persist_directory
+        self.collection_name = CHROMA_COLLECTION_NAME
+
+        # Initialiser les embeddings OpenAI
+        self.embeddings = OpenAIEmbeddings(
+            api_key=OPENAI_API_KEY,
+            model=OPENAI_EMBEDDING_MODEL
+        )
+
+        # Initialiser ChromaDB
+        self.client = chromadb.PersistentClient(
+            path=persist_directory,
+            settings=Settings(anonymized_telemetry=False)
+        )
+
+        # Initialiser le vectorstore
+        self.vectorstore = None
+        self._init_vectorstore()
+
+    def _init_vectorstore(self):
+        """Initialise ou charge le vectorstore Chroma"""
+        try:
+            self.vectorstore = Chroma(
+                client=self.client,
+                collection_name=self.collection_name,
+                embedding_function=self.embeddings
+            )
+            logger.info(f"Vectorstore initialisé: {self.collection_name}")
+        except Exception as e:
+            logger.error(f"Erreur initialisation vectorstore: {e}")
+            raise
+
+    def index_documents(self, docs_directory: Path = REG_DOCS_DIR, force_reindex: bool = False):
+        """
+        Indexe les documents REG dans ChromaDB
+
+        Args:
+            docs_directory: Répertoire contenant les documents REG
+            force_reindex: Forcer la réindexation même si des docs existent
+        """
+        # Vérifier si la collection existe et contient des documents
+        try:
+            collection = self.client.get_collection(self.collection_name)
+            count = collection.count()
+            if count > 0 and not force_reindex:
+                logger.info(f"Collection déjà indexée avec {count} documents. Utiliser force_reindex=True pour réindexer.")
+                return
+        except Exception:
+            pass
+
+        logger.info(f"Indexation des documents REG depuis {docs_directory}")
+
+        # Lister les fichiers PDF et MD
+        pdf_files = list(docs_directory.glob("*.pdf"))
+        md_files = list(docs_directory.glob("*.md"))
+
+        if not pdf_files and not md_files:
+            logger.warning(f"Aucun document trouvé dans {docs_directory}")
+            return
+
+        all_chunks = []
+        all_metadatas = []
+
+        # Traiter les PDF
+        pdf_processor = PDFProcessor(use_ocr=True)
+        for pdf_file in pdf_files:
+            try:
+                logger.info(f"Traitement de {pdf_file.name}")
+                result = pdf_processor.extract_text(pdf_file)
+                chunks = self._split_text(result["text"], pdf_file.name)
+
+                for chunk in chunks:
+                    all_chunks.append(chunk["text"])
+                    all_metadatas.append({
+                        "source": pdf_file.name,
+                        "type": "pdf",
+                        "chunk_index": chunk["chunk_index"],
+                        "page_start": chunk.get("page_start", 1)
+                    })
+            except Exception as e:
+                logger.error(f"Erreur traitement {pdf_file.name}: {e}")
+
+        # Traiter les fichiers Markdown
+        for md_file in md_files:
+            try:
+                logger.info(f"Traitement de {md_file.name}")
+                with open(md_file, 'r', encoding='utf-8') as f:
+                    text = f.read()
+
+                chunks = self._split_text(text, md_file.name)
+
+                for chunk in chunks:
+                    all_chunks.append(chunk["text"])
+                    all_metadatas.append({
+                        "source": md_file.name,
+                        "type": "markdown",
+                        "chunk_index": chunk["chunk_index"]
+                    })
+            except Exception as e:
+                logger.error(f"Erreur traitement {md_file.name}: {e}")
+
+        # Indexer dans ChromaDB
+        if all_chunks:
+            logger.info(f"Indexation de {len(all_chunks)} chunks dans ChromaDB")
+
+            # Si force_reindex, supprimer l'ancienne collection
+            if force_reindex:
+                try:
+                    self.client.delete_collection(self.collection_name)
+                    logger.info("Ancienne collection supprimée")
+                except Exception:
+                    pass
+
+            # Créer le vectorstore
+            self.vectorstore = Chroma.from_texts(
+                texts=all_chunks,
+                embedding=self.embeddings,
+                metadatas=all_metadatas,
+                client=self.client,
+                collection_name=self.collection_name
+            )
+
+            logger.info(f"Indexation terminée: {len(all_chunks)} chunks")
+        else:
+            logger.warning("Aucun chunk à indexer")
+
+    def _split_text(self, text: str, source_name: str) -> List[Dict]:
+        """
+        Découpe le texte en chunks
+
+        Args:
+            text: Texte à découper
+            source_name: Nom du fichier source
+
+        Returns:
+            Liste de chunks avec métadonnées
+        """
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=PDF_CHUNK_SIZE,
+            chunk_overlap=PDF_CHUNK_OVERLAP,
+            length_function=len
+        )
+
+        chunks = splitter.split_text(text)
+
+        return [
+            {
+                "text": chunk,
+                "chunk_index": idx,
+                "source": source_name
+            }
+            for idx, chunk in enumerate(chunks)
+        ]
+
+    def search_relevant_chunks(
+        self,
+        query: str,
+        top_k: int = 5,
+        filter_metadata: Optional[Dict] = None
+    ) -> List[EvidenceREG]:
+        """
+        Recherche les chunks pertinents pour une requête
+
+        Args:
+            query: Requête de recherche
+            top_k: Nombre de résultats à retourner
+            filter_metadata: Filtres sur les métadonnées
+
+        Returns:
+            Liste d'EvidenceREG
+        """
+        if not self.vectorstore:
+            logger.warning("Vectorstore non initialisé")
+            return []
+
+        try:
+            # Recherche avec similarité
+            results = self.vectorstore.similarity_search_with_score(
+                query=query,
+                k=top_k,
+                filter=filter_metadata
+            )
+
+            evidences = []
+            for doc, score in results:
+                evidence = EvidenceREG(
+                    document_id=doc.metadata.get("source", "unknown"),
+                    document_name=doc.metadata.get("source", "unknown"),
+                    chunk_text=doc.page_content,
+                    similarity_score=float(1 - score),  # Convertir distance en similarité
+                    metadata=doc.metadata
+                )
+                evidences.append(evidence)
+
+            logger.info(f"Recherche '{query[:50]}...': {len(evidences)} résultats")
+            return evidences
+
+        except Exception as e:
+            logger.error(f"Erreur recherche RAG: {e}")
+            return []
+
+    def search_for_requirements(self, requirements: List[str], top_k_per_req: int = 3) -> List[EvidenceREG]:
+        """
+        Recherche des preuves REG pour une liste d'exigences
+
+        Args:
+            requirements: Liste d'exigences à matcher
+            top_k_per_req: Nombre de résultats par exigence
+
+        Returns:
+            Liste consolidée d'EvidenceREG
+        """
+        all_evidences = []
+        seen_chunks = set()
+
+        for req in requirements:
+            evidences = self.search_relevant_chunks(req, top_k=top_k_per_req)
+
+            for evidence in evidences:
+                # Éviter les doublons
+                chunk_id = f"{evidence.document_id}_{evidence.metadata.get('chunk_index', 0)}"
+                if chunk_id not in seen_chunks:
+                    seen_chunks.add(chunk_id)
+                    all_evidences.append(evidence)
+
+        logger.info(f"Recherche pour {len(requirements)} exigences: {len(all_evidences)} preuves trouvées")
+        return all_evidences
+
+    def get_collection_stats(self) -> Dict:
+        """Retourne les statistiques de la collection"""
+        try:
+            collection = self.client.get_collection(self.collection_name)
+            return {
+                "name": self.collection_name,
+                "count": collection.count(),
+                "persist_directory": self.persist_directory
+            }
+        except Exception as e:
+            logger.error(f"Erreur récupération stats: {e}")
+            return {
+                "name": self.collection_name,
+                "count": 0,
+                "error": str(e)
+            }
